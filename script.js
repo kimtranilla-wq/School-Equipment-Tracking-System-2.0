@@ -6,10 +6,14 @@ const STORAGE_KEYS = {
   activities: "activityStack",
   maintenance: "maintenanceQueue",
   users: "normalUserAccounts",
+  loans: "equipmentLoans",
   returnProofs: "returnProofs"
 };
 const SESSION_KEY = "equipmentTrackingSession";
+const THEME_KEY = "equipmentTrackingTheme";
 const MAX_RETURN_PHOTO_SIZE = 20 * 1024 * 1024;
+const RETURN_PHOTO_DB = "equipmentReturnPhotos";
+const RETURN_PHOTO_STORE = "photos";
 const STATUSES = ["Available", "In Use", "Under Maintenance", "Lost"];
 const CONDITIONS = ["New", "Good", "Fair", "Damaged"];
 const sampleEquipment = [
@@ -36,10 +40,40 @@ let equipmentList = loadArray(STORAGE_KEYS.equipment, sampleEquipment.map(record
 let activityStack = loadArray(STORAGE_KEYS.activities, []);
 let maintenanceQueue = loadArray(STORAGE_KEYS.maintenance, []);
 let userAccounts = loadArray(STORAGE_KEYS.users, []);
+let equipmentLoans = loadArray(STORAGE_KEYS.loans, []);
 let returnProofs = loadArray(STORAGE_KEYS.returnProofs, []);
 let currentUser = null;
 let toastTimer;
 let lastFocusedElement = null;
+let returnPhotoDatabase;
+let activePhotoUrl = "";
+
+function applyTheme(themeName = localStorage.getItem(THEME_KEY) || "light") {
+  const normalizedTheme = themeName === "dark" ? "dark" : "light";
+  document.body.dataset.theme = normalizedTheme;
+  localStorage.setItem(THEME_KEY, normalizedTheme);
+
+  document.querySelectorAll("[data-theme-toggle]").forEach(button => {
+    const isDarkMode = normalizedTheme === "dark";
+    button.textContent = isDarkMode ? "☀️ Light" : "🌙 Dark";
+    button.setAttribute("aria-label", isDarkMode ? "Switch to light mode" : "Switch to dark mode");
+    button.setAttribute("aria-pressed", String(isDarkMode));
+  });
+}
+
+function toggleTheme() {
+  const currentTheme = document.body.dataset.theme === "dark" ? "dark" : "light";
+  applyTheme(currentTheme === "dark" ? "light" : "dark");
+}
+
+document.addEventListener("click", event => {
+  const toggleButton = event.target.closest("[data-theme-toggle]");
+  if (toggleButton) {
+    toggleTheme();
+  }
+});
+
+applyTheme();
 
 // 2. LocalStorage
 function saveData() {
@@ -48,6 +82,7 @@ function saveData() {
     localStorage.setItem(STORAGE_KEYS.activities, JSON.stringify(activityStack));
     localStorage.setItem(STORAGE_KEYS.maintenance, JSON.stringify(maintenanceQueue));
     localStorage.setItem(STORAGE_KEYS.users, JSON.stringify(userAccounts));
+    localStorage.setItem(STORAGE_KEYS.loans, JSON.stringify(equipmentLoans));
     localStorage.setItem(STORAGE_KEYS.returnProofs, JSON.stringify(returnProofs));
     return true;
   } catch (error) {
@@ -55,6 +90,57 @@ function saveData() {
     showToast("Browser storage is unavailable. Changes may not persist after closing this page.", true);
     return false;
   }
+}
+
+function openReturnPhotoDatabase() {
+  if (!globalThis.indexedDB) return Promise.reject(new Error("This browser does not support local photo storage."));
+  if (!returnPhotoDatabase) {
+    returnPhotoDatabase = new Promise((resolve, reject) => {
+      const request = indexedDB.open(RETURN_PHOTO_DB, 1);
+      request.onupgradeneeded = () => {
+        if (!request.result.objectStoreNames.contains(RETURN_PHOTO_STORE)) request.result.createObjectStore(RETURN_PHOTO_STORE);
+      };
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error || new Error("Could not open photo storage."));
+    });
+  }
+  return returnPhotoDatabase;
+}
+
+async function saveReturnPhoto(proofId, file) {
+  const database = await openReturnPhotoDatabase();
+  return new Promise((resolve, reject) => {
+    const transaction = database.transaction(RETURN_PHOTO_STORE, "readwrite");
+    transaction.objectStore(RETURN_PHOTO_STORE).put(file, proofId);
+    transaction.oncomplete = () => resolve();
+    transaction.onerror = () => reject(transaction.error || new Error("Could not save return photo."));
+    transaction.onabort = () => reject(transaction.error || new Error("Photo storage was aborted."));
+  });
+}
+
+async function loadReturnPhoto(proof) {
+  if (proof.photoUrl) return proof.photoUrl;
+  if (!proof.photoKey) throw new Error("This return proof has no saved photo.");
+  const database = await openReturnPhotoDatabase();
+  return new Promise((resolve, reject) => {
+    const transaction = database.transaction(RETURN_PHOTO_STORE, "readonly");
+    const request = transaction.objectStore(RETURN_PHOTO_STORE).get(proof.photoKey);
+    request.onsuccess = () => {
+      if (!request.result) return reject(new Error("The saved return photo could not be found."));
+      resolve(URL.createObjectURL(request.result));
+    };
+    request.onerror = () => reject(request.error || new Error("Could not load return photo."));
+  });
+}
+
+async function deleteReturnPhoto(proofId) {
+  const database = await openReturnPhotoDatabase();
+  return new Promise((resolve, reject) => {
+    const transaction = database.transaction(RETURN_PHOTO_STORE, "readwrite");
+    transaction.objectStore(RETURN_PHOTO_STORE).delete(proofId);
+    transaction.oncomplete = () => resolve();
+    transaction.onerror = () => reject(transaction.error || new Error("Could not remove return photo."));
+  });
 }
 
 if (localStorage.getItem(STORAGE_KEYS.maintenance) === null) {
@@ -227,7 +313,10 @@ document.getElementById("userLogoutButton").addEventListener("click", () => {
 
 // 4. Dashboard
 function isEquipmentAvailable(record) {
-  return record.status === "Available" && Number(record.quantity) > 0;
+  if (!record || !["Available", "In Use"].includes(record.status)) return false;
+  const activeCount = getActiveLoansForEquipment(record.id).length;
+  if (record.status === "In Use" && activeCount === 0) return false;
+  return activeCount < Number(record.quantity || 0);
 }
 
 function renderUserEquipmentCard(record) {
@@ -237,15 +326,19 @@ function renderUserEquipmentCard(record) {
   return `<article class="user-equipment-card"><div class="user-card-top"><span class="user-category">${escapeHTML(category)}</span><span class="availability-pill ${available ? "is-available" : "is-unavailable"}">${available ? "Available" : "Unavailable"}</span></div><h3>${escapeHTML(record.name)}</h3><p class="user-equipment-description">${escapeHTML(description)}</p><div class="user-item-meta"><span>Quantity<strong>${escapeHTML(record.quantity)} units</strong></span><span>Status<strong>${escapeHTML(record.status)}</strong></span></div></article>`;
 }
 
+function getActiveLoansForEquipment(equipmentId) {
+  return equipmentLoans.filter(loan => loan.equipmentId === equipmentId && loan.status === "Active");
+}
+
+function canIssueEquipment(record) {
+  if (!record || !["Available", "In Use"].includes(record.status)) return false;
+  const activeCount = getActiveLoansForEquipment(record.id).length;
+  return activeCount < Number(record.quantity || 0) && (record.status === "Available" || activeCount > 0);
+}
+
 function getUserBorrowedEquipment() {
   if (!currentUser) return [];
-  const normalizedUser = currentUser.fullName?.trim().toLowerCase() || currentUser.username?.trim().toLowerCase();
-  return equipmentList.filter(record => {
-    const assigned = (record.assignedTo || "").toLowerCase();
-    const statusIsBorrowed = record.status === "In Use" || record.status === "Available";
-    const matchesUser = !normalizedUser ? false : assigned.includes(normalizedUser) || assigned.includes("faculty") || assigned.includes("student");
-    return statusIsBorrowed && matchesUser;
-  });
+  return equipmentLoans.filter(loan => loan.borrowerId === currentUser.id && loan.status === "Active");
 }
 
 function renderUserBorrowedEquipment() {
@@ -256,28 +349,95 @@ function renderUserBorrowedEquipment() {
     host.innerHTML = `<div class="empty-state">No borrowed equipment found for your account.</div>`;
     return;
   }
-  host.innerHTML = borrowed.map(record => `
+  host.innerHTML = borrowed.map(loan => {
+    const pendingProof = returnProofs.find(proof => proof.loanId === loan.id && proof.status === "Pending Review");
+    return `
     <article class="user-borrow-card">
-      <h3>${escapeHTML(record.name)}</h3>
+      <h3>${escapeHTML(loan.equipmentName)}</h3>
       <div class="user-borrow-meta">
-        <div><span>Equipment ID</span><strong>${escapeHTML(record.id)}</strong></div>
-        <div><span>Borrowed Date</span><strong>${escapeHTML(record.purchaseDate || "—")}</strong></div>
-        <div><span>Expected Return</span><strong>${escapeHTML(getExpectedReturnDate(record.purchaseDate))}</strong></div>
-        <div><span>Status</span><strong>${escapeHTML(record.status)}</strong></div>
+        <div><span>Equipment ID</span><strong>${escapeHTML(loan.equipmentId)}</strong></div>
+        <div><span>Borrowed Date</span><strong>${escapeHTML(new Date(loan.borrowedAt).toLocaleDateString())}</strong></div>
+        <div><span>Due Date</span><strong>${escapeHTML(loan.dueDate)}</strong></div>
+        <div><span>Loan Status</span><strong>${escapeHTML(pendingProof ? "Return Pending Review" : "Active")}</strong></div>
       </div>
       <div class="user-borrow-actions">
-        <button class="button button-primary return-proof-button" type="button" data-action="submit-return-proof" data-equipment-id="${escapeHTML(record.id)}">Submit Return Proof</button>
+        <button class="button button-primary return-proof-button" type="button" data-action="submit-return-proof" data-loan-id="${escapeHTML(loan.id)}" ${pendingProof ? "disabled" : ""}>${pendingProof ? "Proof Pending Review" : "Submit Return Proof"}</button>
       </div>
     </article>
-  `).join("");
+  `;
+  }).join("");
 }
 
-function getExpectedReturnDate(purchaseDate) {
-  if (!purchaseDate) return "Not set";
-  const date = new Date(purchaseDate);
-  date.setDate(date.getDate() + 3);
-  return date.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+function renderAdminLoans() {
+  if (currentUser?.role !== "admin") return;
+  const borrowerSelect = document.getElementById("loanBorrowerSelect");
+  const equipmentSelect = document.getElementById("loanEquipmentSelect");
+  const loanList = document.getElementById("activeLoanList");
+  if (!borrowerSelect || !equipmentSelect || !loanList) return;
+  const dueDateInput = document.getElementById("loanDueDate");
+  const today = new Date();
+  dueDateInput.min = today.toISOString().slice(0, 10);
+  if (!dueDateInput.value) {
+    today.setDate(today.getDate() + 7);
+    dueDateInput.value = today.toISOString().slice(0, 10);
+  }
+  const priorBorrower = borrowerSelect.value;
+  const priorEquipment = equipmentSelect.value;
+  borrowerSelect.innerHTML = userAccounts.length
+    ? userAccounts.map(user => `<option value="${escapeHTML(user.id)}">${escapeHTML(user.fullName)} · @${escapeHTML(user.username)}</option>`).join("")
+    : `<option value="">No normal user accounts</option>`;
+  const eligible = equipmentList.filter(canIssueEquipment);
+  equipmentSelect.innerHTML = eligible.length
+    ? eligible.map(record => `<option value="${escapeHTML(record.id)}">${escapeHTML(record.id)} · ${escapeHTML(record.name)}</option>`).join("")
+    : `<option value="">No equipment available to issue</option>`;
+  if (userAccounts.some(user => user.id === priorBorrower)) borrowerSelect.value = priorBorrower;
+  if (eligible.some(record => record.id === priorEquipment)) equipmentSelect.value = priorEquipment;
+  document.getElementById("issueLoanForm").querySelector("button[type='submit']").disabled = !userAccounts.length || !eligible.length;
+  const active = equipmentLoans.filter(loan => loan.status === "Active").slice().reverse();
+  loanList.innerHTML = active.length ? active.map(loan => `
+    <article class="active-loan-row">
+      <strong>${escapeHTML(loan.equipmentName)} · ${escapeHTML(loan.equipmentId)}</strong>
+      <span>${escapeHTML(loan.borrowerName)} · borrowed ${escapeHTML(new Date(loan.borrowedAt).toLocaleDateString())} · due ${escapeHTML(loan.dueDate)}</span>
+    </article>
+  `).join("") : `<div class="empty-state">No active loans.</div>`;
 }
+
+document.getElementById("issueLoanForm").addEventListener("submit", event => {
+  event.preventDefault();
+  if (!requireAdmin()) return;
+  const values = new FormData(event.currentTarget);
+  const borrower = userAccounts.find(user => user.id === values.get("borrowerId"));
+  const record = equipmentList.find(item => item.id === values.get("equipmentId"));
+  const activeForEquipment = record ? getActiveLoansForEquipment(record.id) : [];
+  if (!borrower || !record) return showToast("Choose a normal user and available equipment.", true);
+  if (!canIssueEquipment(record) || activeForEquipment.length >= Number(record.quantity || 0)) {
+    return showToast("That equipment cannot be issued right now.", true);
+  }
+  const dueDate = String(values.get("dueDate") || "");
+  if (!dueDate || dueDate < new Date().toISOString().slice(0, 10)) return showToast("Choose a due date today or later.", true);
+  const loan = {
+    id: crypto.randomUUID(),
+    equipmentId: record.id,
+    equipmentName: record.name,
+    borrowerId: borrower.id,
+    borrowerName: borrower.fullName,
+    borrowerUsername: borrower.username,
+    borrowedAt: new Date().toISOString(),
+    dueDate,
+    status: "Active",
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  };
+  equipmentLoans.push(loan);
+  const updatedActiveLoans = getActiveLoansForEquipment(record.id);
+  record.status = updatedActiveLoans.length >= Number(record.quantity || 0) ? "In Use" : "Available";
+  record.assignedTo = updatedActiveLoans.length > 1 ? "Multiple borrowers" : borrower.fullName;
+  addActivity(`Issued ${record.name} ${record.id} to ${borrower.fullName}`);
+  saveData();
+  renderAll();
+  renderUserDashboard();
+  showToast("Equipment loan issued.");
+});
 
 function renderUserReturnHistory() {
   const host = document.getElementById("userReturnHistory");
@@ -367,35 +527,39 @@ document.querySelectorAll("[data-user-page]").forEach(button => button.addEventL
 document.addEventListener("click", event => {
   const submitButton = event.target.closest("[data-action='submit-return-proof']");
   if (submitButton) {
-    openReturnProofForm(submitButton.dataset.equipmentId);
+    openReturnProofForm(submitButton.dataset.loanId);
     return;
   }
   const viewProofButton = event.target.closest("[data-action='view-return-proof']");
   if (viewProofButton) {
     const proof = returnProofs.find(item => item.id === viewProofButton.dataset.proofId);
-    if (proof) openReturnProofViewer(proof);
+    if (currentUser?.role === "user" && proof?.borrowerId === currentUser.id) openReturnProofViewer(proof);
+    else if (currentUser?.role !== "admin") showToast("You cannot view another user's return proof.", true);
     return;
   }
   const adminViewButton = event.target.closest("[data-admin-action='view-proof']");
   if (adminViewButton) {
+    if (!requireAdmin()) return;
     const proof = returnProofs.find(item => item.id === adminViewButton.dataset.proofId);
     if (proof) openReturnProofViewer(proof);
     return;
   }
   const adminApproveButton = event.target.closest("[data-admin-action='approve-proof']");
   if (adminApproveButton) {
+    if (!requireAdmin()) return;
     const proof = returnProofs.find(item => item.id === adminApproveButton.dataset.proofId);
-    if (proof) openApprovalConfirm(proof);
+    if (proof?.status === "Pending Review") openApprovalConfirm(proof);
     return;
   }
   const adminRejectButton = event.target.closest("[data-admin-action='reject-proof']");
   if (adminRejectButton) {
+    if (!requireAdmin()) return;
     const proof = returnProofs.find(item => item.id === adminRejectButton.dataset.proofId);
-    if (proof) openRejectReasonForm(proof);
+    if (proof?.status === "Pending Review") openRejectReasonForm(proof);
     return;
   }
   const actionButton = event.target.closest("[data-action]");
-  if (actionButton) {
+  if (actionButton && ["view", "edit", "status", "delete"].includes(actionButton.dataset.action)) {
     if (!requireAdmin()) return;
     const record = equipmentList.find(item => item.id === actionButton.dataset.id);
     if (!record) return showToast("Record not found.", true);
@@ -823,7 +987,7 @@ document.getElementById("tableFilter").addEventListener("input", event => render
 
 document.addEventListener("click", event => {
   const actionButton = event.target.closest("[data-action]");
-  if (actionButton) {
+  if (actionButton && ["view", "edit", "status", "delete"].includes(actionButton.dataset.action)) {
     if (!requireAdmin()) return;
     const record = equipmentList.find(item => item.id === actionButton.dataset.id);
     if (!record) return showToast("Record not found.", true);
@@ -844,11 +1008,14 @@ function showToast(message, isError = false) {
   toastTimer = window.setTimeout(() => toast.classList.remove("visible"), 3200);
 }
 
-function openReturnProofForm(equipmentId) {
+function openReturnProofForm(loanId) {
   if (!currentUser || currentUser.role !== "user") return showToast("Only normal users can submit return proof.", true);
+  const loan = equipmentLoans.find(item => item.id === loanId && item.borrowerId === currentUser.id && item.status === "Active");
+  if (!loan) return showToast("That active loan could not be found for your account.", true);
+  const equipmentId = loan.equipmentId;
   const record = equipmentList.find(item => item.id === equipmentId);
   if (!record) return showToast("Equipment not found.", true);
-  const existing = returnProofs.find(item => item.equipmentId === equipmentId && item.borrowerId === currentUser.id && ["Pending Review", "Approved"].includes(item.status));
+  const existing = returnProofs.find(item => item.loanId === loanId && ["Pending Review", "Approved"].includes(item.status));
   if (existing) {
     showToast(`Return proof already submitted. Status: ${existing.status}`, true);
     return;
@@ -856,6 +1023,7 @@ function openReturnProofForm(equipmentId) {
   const now = new Date();
   const content = `
     <form id="returnProofForm" class="modal-form" enctype="multipart/form-data">
+      <input type="hidden" name="loanId" value="${escapeHTML(loan.id)}">
       <input type="hidden" name="equipmentId" value="${escapeHTML(record.id)}">
       <input type="hidden" name="equipmentName" value="${escapeHTML(record.name)}">
       <label>Equipment<input value="${escapeHTML(record.name)}" readonly></label>
@@ -913,10 +1081,11 @@ function openReturnProofForm(equipmentId) {
   });
 }
 
-function saveReturnProofFromModal() {
+async function saveReturnProofFromModal(button) {
   const form = document.getElementById("returnProofForm");
   if (!form) return;
   const fileInput = form.querySelector("input[name='photo']");
+  const loanId = form.querySelector("input[name='loanId']")?.value || "";
   const equipmentId = form.querySelector("input[name='equipmentId']")?.value || "";
   const equipmentName = form.querySelector("input[name='equipmentName']")?.value || "";
   const file = fileInput && fileInput.files ? fileInput.files[0] : null;
@@ -935,39 +1104,49 @@ function saveReturnProofFromModal() {
     error.hidden = false;
     return;
   }
-  const reader = new FileReader();
-  reader.onload = () => {
-    const proof = {
-      id: `RP-${String(returnProofs.length + 1).padStart(3, "0")}`,
-      equipmentId: equipmentId,
-      equipmentName: equipmentName,
-      borrowerId: currentUser.id,
-      borrowerName: currentUser.fullName,
-      borrowerUsername: currentUser.username,
-      photoUrl: reader.result,
-      note: form.querySelector("textarea[name='note']")?.value || "",
-      returnDate: form.querySelector("input[name='returnDate']")?.value || new Date().toISOString().slice(0, 10),
-      returnTime: form.querySelector("input[name='returnTime']")?.value || new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-      submittedAt: new Date().toISOString(),
-      status: "Pending Review",
-      rejectionReason: "",
-      receiverId: "",
-      receiverName: "",
-      receiverUsername: "",
-      reviewedAt: "",
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
-    };
-    const equipmentRecord = equipmentList.find(item => item.id === proof.equipmentId);
-    proof.equipmentId = equipmentRecord ? equipmentRecord.id : proof.equipmentId;
-    proof.equipmentName = equipmentRecord ? equipmentRecord.name : proof.equipmentName;
+  if (button) button.disabled = true;
+  const now = new Date().toISOString();
+  const proof = {
+    id: crypto.randomUUID(),
+    loanId,
+    equipmentId,
+    equipmentName,
+    borrowerId: currentUser.id,
+    borrowerName: currentUser.fullName,
+    borrowerUsername: currentUser.username,
+    photoKey: "",
+    note: form.querySelector("textarea[name='note']")?.value || "",
+    returnDate: form.querySelector("input[name='returnDate']")?.value || new Date().toISOString().slice(0, 10),
+    returnTime: form.querySelector("input[name='returnTime']")?.value || new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+    submittedAt: now,
+    status: "Pending Review",
+    rejectionReason: "",
+    receiverId: "",
+    receiverName: "",
+    receiverUsername: "",
+    reviewedAt: "",
+    createdAt: now,
+    updatedAt: now
+  };
+  proof.photoKey = proof.id;
+  try {
+    await saveReturnPhoto(proof.photoKey, file);
     returnProofs.push(proof);
-    saveData();
+    if (!saveData()) {
+      returnProofs.pop();
+      await deleteReturnPhoto(proof.photoKey);
+      if (button) button.disabled = false;
+      showToast("Could not save the return submission. Free browser storage and try again.", true);
+      return;
+    }
     renderUserDashboard();
     closeModal();
     showToast("Return proof submitted successfully.");
-  };
-  reader.readAsDataURL(file);
+  } catch (error) {
+    console.error("Could not save return proof.", error);
+    if (button) button.disabled = false;
+    showToast(error.message || "Could not save the return photo.", true);
+  }
 }
 
 function formatDateTime(value) {
@@ -1041,13 +1220,19 @@ function renderAdminReturnProofs() {
   }));
 }
 
-function openReturnProofViewer(proof) {
+async function openReturnProofViewer(proof) {
+  if (currentUser?.role === "user" && proof.borrowerId !== currentUser.id) return showToast("You cannot view another user's return proof.", true);
+  try {
+    const photoUrl = await loadReturnPhoto(proof);
+    if (activePhotoUrl) URL.revokeObjectURL(activePhotoUrl);
+    activePhotoUrl = photoUrl.startsWith("blob:") ? photoUrl : "";
   const content = `
     <div class="return-photo-preview">
-      <img src="${proof.photoUrl}" alt="Return proof for ${escapeHTML(proof.equipmentName)}">
+      <img src="${escapeHTML(photoUrl)}" alt="Return proof for ${escapeHTML(proof.equipmentName)}">
       <div class="admin-return-grid">
         <div><span>Equipment Name</span><strong>${escapeHTML(proof.equipmentName)}</strong></div>
         <div><span>Equipment ID</span><strong>${escapeHTML(proof.equipmentId)}</strong></div>
+        <div><span>Loan ID</span><strong>${escapeHTML(proof.loanId || "Legacy submission")}</strong></div>
         <div><span>Borrower</span><strong>${escapeHTML(proof.borrowerName)}</strong></div>
         <div><span>Return Date</span><strong>${escapeHTML(proof.returnDate)}</strong></div>
         <div><span>Return Time</span><strong>${escapeHTML(proof.returnTime)}</strong></div>
@@ -1057,6 +1242,10 @@ function openReturnProofViewer(proof) {
     </div>
   `;
   openModal({ eyebrow: "RETURN PROOF", title: `Photo Review · ${proof.id}`, content, actions: [{ action: "close", label: "Close", className: "button-outline" }] });
+  } catch (error) {
+    console.error("Could not open return photo.", error);
+    showToast(error.message || "Could not load the return photo.", true);
+  }
 }
 
 function openApprovalConfirm(proof) {
@@ -1082,8 +1271,9 @@ function openRejectReasonForm(proof) {
 }
 
 function approveReturnProof(proofId) {
+  if (!requireAdmin()) return;
   const proof = returnProofs.find(item => item.id === proofId);
-  if (!proof) return;
+  if (!proof || proof.status !== "Pending Review") return;
   const admin = currentUser;
   proof.status = "Approved";
   proof.reviewedBy = admin.fullName;
@@ -1092,11 +1282,18 @@ function approveReturnProof(proofId) {
   proof.receiverUsername = admin.username;
   proof.reviewedAt = new Date().toISOString();
   proof.updatedAt = proof.reviewedAt;
+  const loan = equipmentLoans.find(item => item.id === proof.loanId && item.status === "Active");
+  if (!loan) return showToast("The active loan linked to this proof could not be found.", true);
+  loan.status = "Returned";
+  loan.returnedAt = proof.reviewedAt;
+  loan.updatedAt = proof.reviewedAt;
   const equipmentRecord = equipmentList.find(item => item.id === proof.equipmentId);
   if (equipmentRecord) {
-    equipmentRecord.status = "Available";
-    equipmentRecord.assignedTo = "School Inventory";
+    const activeLoans = getActiveLoansForEquipment(equipmentRecord.id);
+    equipmentRecord.status = activeLoans.length >= Number(equipmentRecord.quantity || 0) ? "In Use" : "Available";
+    equipmentRecord.assignedTo = activeLoans.length ? "Multiple borrowers" : "School Inventory";
   }
+  addActivity(`Approved return of ${proof.equipmentName} ${proof.equipmentId} from ${proof.borrowerName}`);
   saveData();
   renderAll();
   renderUserDashboard();
@@ -1106,8 +1303,9 @@ function approveReturnProof(proofId) {
 }
 
 function rejectReturnProof(proofId, reason) {
+  if (!requireAdmin()) return;
   const proof = returnProofs.find(item => item.id === proofId);
-  if (!proof) return;
+  if (!proof || proof.status !== "Pending Review") return;
   proof.status = "Rejected";
   proof.rejectionReason = reason;
   proof.reviewedBy = currentUser.fullName;
@@ -1116,6 +1314,7 @@ function rejectReturnProof(proofId, reason) {
   proof.receiverUsername = currentUser.username;
   proof.reviewedAt = new Date().toISOString();
   proof.updatedAt = proof.reviewedAt;
+  addActivity(`Rejected return proof for ${proof.equipmentName} ${proof.equipmentId}`);
   saveData();
   renderAll();
   renderUserDashboard();
@@ -1126,14 +1325,16 @@ function rejectReturnProof(proofId, reason) {
 
 function handleModalAction(action, button) {
   if (action === "submit-return-proof") {
-    saveReturnProofFromModal();
+    saveReturnProofFromModal(button);
     return;
   }
   if (action === "confirm-approve-proof") {
+    if (!requireAdmin()) return closeModal();
     approveReturnProof(button.dataset.proofId);
     return;
   }
   if (action === "confirm-reject-proof") {
+    if (!requireAdmin()) return closeModal();
     const form = document.getElementById("rejectReasonForm");
     const reason = form ? form.querySelector("textarea[name='rejectionReason']")?.value?.trim() : "";
     if (!reason) return showToast("Please provide a rejection reason.", true);
@@ -1143,7 +1344,10 @@ function handleModalAction(action, button) {
 }
 
 function renderAdminDashboardSection() {
-  if (currentUser?.role === "admin") renderAdminReturnProofs();
+  if (currentUser?.role === "admin") {
+    renderAdminLoans();
+    renderAdminReturnProofs();
+  }
 }
 
 function renderAll() {
@@ -1170,6 +1374,10 @@ function openModal({ eyebrow = "EQUIPMENT", title, content, actions = [] }) {
 
 function closeModal() {
   document.getElementById("modalBackdrop").hidden = true;
+  if (activePhotoUrl) {
+    URL.revokeObjectURL(activePhotoUrl);
+    activePhotoUrl = "";
+  }
   if (lastFocusedElement && typeof lastFocusedElement.focus === "function") lastFocusedElement.focus();
 }
 

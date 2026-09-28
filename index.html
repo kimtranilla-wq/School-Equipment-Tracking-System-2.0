@@ -11,7 +11,10 @@
 <body>
   <section id="loginScreen" class="login-screen" aria-labelledby="loginTitle">
     <div class="login-panel">
-      <div class="brand-mark" aria-hidden="true">SE</div>
+      <div class="login-header">
+        <div class="brand-mark" aria-hidden="true">SE</div>
+        <button class="theme-toggle theme-toggle-inline" type="button" data-theme-toggle aria-label="Switch to dark mode">🌙 Dark</button>
+      </div>
       <p class="eyebrow">PROPERTY &amp; ASSET OFFICE</p>
       <h1 id="loginTitle">School Equipment<br>Tracking System</h1>
       <p class="login-copy">Sign in to manage school equipment.</p>
@@ -33,7 +36,10 @@
 
   <section id="registrationScreen" class="login-screen" aria-labelledby="registrationTitle" hidden>
     <div class="login-panel">
-      <div class="brand-mark" aria-hidden="true">SE</div>
+      <div class="login-header">
+        <div class="brand-mark" aria-hidden="true">SE</div>
+        <button class="theme-toggle theme-toggle-inline" type="button" data-theme-toggle aria-label="Switch to dark mode">🌙 Dark</button>
+      </div>
       <p class="eyebrow">NORMAL USER ACCOUNT</p>
       <h1 id="registrationTitle">Create Account</h1>
       <p class="login-copy">Register to browse school equipment.</p>
@@ -81,7 +87,10 @@
       <header class="topbar">
         <button id="menuButton" class="icon-button menu-button" aria-label="Open navigation" aria-expanded="false">☰</button>
         <div class="breadcrumb"><span>School property</span><span class="breadcrumb-divider">/</span><strong id="currentPageName">Dashboard</strong></div>
-        <div class="topbar-meta"><span class="live-dot"></span>Local storage active</div>
+        <div class="topbar-meta">
+          <button class="theme-toggle" type="button" data-theme-toggle aria-label="Switch to dark mode">🌙 Dark</button>
+          <span class="live-dot"></span>Local storage active
+        </div>
       </header>
 
       <div class="content-wrap">
@@ -94,6 +103,16 @@
           <p class="count-note"><span class="note-mark">i</span> Dashboard totals sum the <strong>quantity</strong> field. Equipment tables and search count distinct records.</p>
           <div class="section-heading"><div><p class="eyebrow">INVENTORY</p><h2>Recently updated</h2></div><button class="text-button" data-go="equipment">View all equipment <span aria-hidden="true">→</span></button></div>
           <div id="dashboardTable" class="table-frame"></div>
+          <div class="admin-loan-panel">
+            <div class="section-heading"><div><p class="eyebrow">CHECKOUT</p><h2>Issue Equipment</h2></div></div>
+            <form id="issueLoanForm" class="issue-loan-form">
+              <label>Normal user<select id="loanBorrowerSelect" name="borrowerId" required></select></label>
+              <label>Equipment<select id="loanEquipmentSelect" name="equipmentId" required></select></label>
+              <label>Due date<input id="loanDueDate" name="dueDate" type="date" required></label>
+              <button class="button button-primary" type="submit">Issue loan</button>
+            </form>
+            <div id="activeLoanList" class="active-loan-list"></div>
+          </div>
           <div class="admin-return-proof-panel">
           <div class="section-heading"><div><p class="eyebrow">RETURN PROOFS</p><h2>Return Proofs</h2></div></div>
           <div id="adminReturnProofsPanel" class="admin-return-proof-panel-inner"></div>
@@ -174,6 +193,7 @@
         <button class="user-nav-item" data-user-page="available">Available Equipment</button>
         <button class="user-nav-item" data-user-page="unavailable">Unavailable Equipment</button>
         <button class="user-nav-item" data-user-page="profile">Profile</button>
+        <button class="theme-toggle" type="button" data-theme-toggle aria-label="Switch to dark mode">🌙 Dark</button>
         <button id="userLogoutButton" class="button button-outline" type="button">Logout</button>
       </nav>
     </header>
