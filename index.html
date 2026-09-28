@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#f4f7fb">
+  <title>School Equipment Tracking System</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="script.js" defer></script>
+</head>
+<body>
+  <section id="loginScreen" class="login-screen" aria-labelledby="loginTitle">
+    <div class="login-panel">
+      <div class="brand-mark" aria-hidden="true">SE</div>
+      <p class="eyebrow">PROPERTY &amp; ASSET OFFICE</p>
+      <h1 id="loginTitle">School Equipment<br>Tracking System</h1>
+      <p class="login-copy">Sign in to manage school equipment.</p>
+      <form id="loginForm" class="stack-form">
+        <label>Username<input id="username" name="username" autocomplete="username" required></label>
+        <label>Password<input id="password" name="password" type="password" autocomplete="current-password" required></label>
+        <p id="loginError" class="form-error" role="alert" hidden>Invalid username or password.</p>
+        <button class="button button-primary button-wide" type="submit">Login</button>
+        <button class="button button-quiet button-wide" id="exitButton" type="button">Exit</button>
+      </form>
+      <p class="create-account-prompt">Don't have an account? <button id="showRegistrationButton" class="text-button" type="button">Create Account</button></p>
+    </div>
+    <div class="login-aside" aria-hidden="true">
+      <div class="aside-rule"></div>
+      <p>INVENTORY<br>WITH CLARITY</p>
+      <span>Equipment records · Status · Maintenance</span>
+    </div>
+  </section>
+
+  <section id="registrationScreen" class="login-screen" aria-labelledby="registrationTitle" hidden>
+    <div class="login-panel">
+      <div class="brand-mark" aria-hidden="true">SE</div>
+      <p class="eyebrow">NORMAL USER ACCOUNT</p>
+      <h1 id="registrationTitle">Create Account</h1>
+      <p class="login-copy">Register to browse school equipment.</p>
+      <form id="registrationForm" class="stack-form" novalidate>
+        <label>Full Name<input name="fullName" autocomplete="name" required></label>
+        <label>Username<input name="username" autocomplete="username" required minlength="3" maxlength="32"></label>
+        <label>Email<input name="email" type="email" autocomplete="email" required></label>
+        <label>Password<input name="password" type="password" autocomplete="new-password" required minlength="8"></label>
+        <label>Confirm Password<input name="confirmPassword" type="password" autocomplete="new-password" required minlength="8"></label>
+        <p id="registrationError" class="form-error" role="alert" hidden></p>
+        <p id="registrationSuccess" class="form-success" role="status" hidden></p>
+        <button class="button button-primary button-wide" type="submit">Create Account</button>
+        <button id="backToLoginButton" class="button button-quiet button-wide" type="button">Back to Login</button>
+      </form>
+      <p class="security-note"><strong>Account type:</strong> Every registration receives Normal User access. Administrator access cannot be selected here.</p>
+    </div>
+    <div class="login-aside" aria-hidden="true"><div class="aside-rule"></div><p>BROWSE<br>WITH EASE</p><span>Available equipment · Search · Your profile</span></div>
+  </section>
+
+  <div id="appShell" class="app-shell" hidden>
+    <aside id="sidebar" class="sidebar">
+      <a class="sidebar-brand" href="#dashboard" data-page-link="dashboard" aria-label="School Equipment Tracking System home">
+        <span class="brand-mark brand-mark-small" aria-hidden="true">SE</span>
+        <span><strong>Equipment</strong><small>TRACKING SYSTEM</small></span>
+      </a>
+      <p class="nav-label">WORKSPACE</p>
+      <nav class="side-nav" aria-label="Main navigation">
+        <button class="nav-item active" data-page="dashboard"><span class="nav-glyph">01</span>Dashboard</button>
+        <button class="nav-item" data-page="equipment"><span class="nav-glyph">02</span>Equipment</button>
+        <button class="nav-item" data-page="add"><span class="nav-glyph">03</span>Add equipment</button>
+        <button class="nav-item" data-page="search"><span class="nav-glyph">04</span>Search</button>
+        <button class="nav-item" data-page="sort"><span class="nav-glyph">05</span>Sort equipment</button>
+        <button class="nav-item" data-page="maintenance"><span class="nav-glyph">06</span>Maintenance queue</button>
+        <button class="nav-item" data-page="history"><span class="nav-glyph">07</span>Activity history</button>
+        <button class="nav-item" data-page="reports"><span class="nav-glyph">08</span>Reports</button>
+        <button class="nav-item" data-page="dsa"><span class="nav-glyph">09</span>DSA demonstration</button>
+      </nav>
+      <div class="sidebar-bottom">
+        <div class="signed-in"><span class="user-dot">A</span><span><strong>Administrator</strong><small>Local demo session</small></span></div>
+        <button id="logoutButton" class="nav-item logout-item"><span class="nav-glyph">↗</span>Logout</button>
+      </div>
+    </aside>
+
+    <main class="main-content">
+      <header class="topbar">
+        <button id="menuButton" class="icon-button menu-button" aria-label="Open navigation" aria-expanded="false">☰</button>
+        <div class="breadcrumb"><span>School property</span><span class="breadcrumb-divider">/</span><strong id="currentPageName">Dashboard</strong></div>
+        <div class="topbar-meta"><span class="live-dot"></span>Local storage active</div>
+      </header>
+
+      <div class="content-wrap">
+        <section id="page-dashboard" class="page-section">
+          <div class="page-heading">
+            <div><p class="eyebrow">OVERVIEW</p><h1>Good day, Administrator</h1><p>Monitor, manage, and track school equipment.</p></div>
+            <button class="button button-primary" data-go="add"><span aria-hidden="true">＋</span> Add equipment</button>
+          </div>
+          <div class="metric-grid" id="dashboardMetrics" aria-live="polite"></div>
+          <p class="count-note"><span class="note-mark">i</span> Dashboard totals sum the <strong>quantity</strong> field. Equipment tables and search count distinct records.</p>
+          <div class="section-heading"><div><p class="eyebrow">INVENTORY</p><h2>Recently updated</h2></div><button class="text-button" data-go="equipment">View all equipment <span aria-hidden="true">→</span></button></div>
+          <div id="dashboardTable" class="table-frame"></div>
+          <div class="admin-return-proof-panel">
+          <div class="section-heading"><div><p class="eyebrow">RETURN PROOFS</p><h2>Return Proofs</h2></div></div>
+          <div id="adminReturnProofsPanel" class="admin-return-proof-panel-inner"></div>
+        </div>
+        <div class="security-banner"><strong>Demo security note</strong><span>Login is client-side only. Do not use real passwords or store confidential inventory information in this classroom demo.</span></div>
+        </section>
+
+        <section id="page-equipment" class="page-section" hidden>
+          <div class="page-heading"><div><p class="eyebrow">INVENTORY REGISTER</p><h1>Equipment</h1><p>Browse and manage recorded school assets.</p></div><button class="button button-primary" data-go="add">＋ Add equipment</button></div>
+          <div class="toolbar"><div class="record-count" id="equipmentCount"></div><label class="compact-search"><span class="sr-only">Filter equipment</span><input id="tableFilter" type="search" placeholder="Filter this table..."></label></div>
+          <div id="equipmentTable" class="table-frame"></div>
+        </section>
+
+        <section id="page-add" class="page-section" hidden>
+          <div class="page-heading"><div><p class="eyebrow">INVENTORY REGISTER</p><h1>Add equipment</h1><p>Enter the details for a new school asset.</p></div></div>
+          <div class="form-panel"><div id="addFormMount"></div></div>
+        </section>
+
+        <section id="page-search" class="page-section" hidden>
+          <div class="page-heading"><div><p class="eyebrow">FIND AN ASSET</p><h1>Search equipment</h1><p>Search IDs, names, categories, serial numbers, locations, and statuses.</p></div></div>
+          <form id="searchForm" class="search-panel"><label class="search-input-wrap"><span class="sr-only">Search equipment records</span><span aria-hidden="true">⌕</span><input id="searchInput" type="search" placeholder="Try “projector”, “EQ001”, or “Available”"></label><button class="button button-primary" type="submit">Search</button><button class="button button-outline" id="clearSearch" type="button">Clear</button></form>
+          <p id="searchFeedback" class="result-feedback" aria-live="polite">Enter a keyword to search all equipment records.</p>
+          <div id="searchResults" class="table-frame"></div>
+        </section>
+
+        <section id="page-sort" class="page-section" hidden>
+          <div class="page-heading"><div><p class="eyebrow">ALGORITHM LAB</p><h1>Sort equipment</h1><p>Organize records with a manually implemented Bubble Sort.</p></div></div>
+          <form id="sortForm" class="sort-panel"><label>Sort by<select id="sortField"><option value="id">Equipment ID</option><option value="name">Equipment name</option><option value="category">Category</option><option value="quantity">Quantity</option><option value="status">Status</option><option value="location">Location</option></select></label><fieldset class="direction-field"><legend>Order</legend><label class="radio-option"><input type="radio" name="sortDirection" value="asc" checked> Ascending</label><label class="radio-option"><input type="radio" name="sortDirection" value="desc"> Descending</label></fieldset><button class="button button-primary" type="submit">Run Bubble Sort</button></form>
+          <p id="sortFeedback" class="result-feedback" aria-live="polite">Choose a field and order, then run the algorithm.</p>
+          <div id="sortResults" class="table-frame"></div>
+        </section>
+
+        <section id="page-maintenance" class="page-section" hidden>
+          <div class="page-heading"><div><p class="eyebrow">FIRST IN, FIRST OUT</p><h1>Maintenance queue</h1><p>Requests are processed in the order they were received.</p></div><span id="queueSize" class="counter-pill">0 requests</span></div>
+          <div class="queue-controls"><label>Add an equipment record<select id="queueEquipmentSelect"></select></label><button id="enqueueButton" class="button button-outline" type="button">＋ Add request</button><div class="control-spacer"></div><button id="processQueueButton" class="button button-primary" type="button">Process next</button><button id="clearQueueButton" class="button button-quiet" type="button">Clear queue</button></div>
+          <div id="queuePeek" class="queue-peek"></div><div id="queueList" class="queue-list"></div>
+        </section>
+
+        <section id="page-history" class="page-section" hidden>
+          <div class="page-heading"><div><p class="eyebrow">LAST IN, FIRST OUT</p><h1>Activity history</h1><p>The newest action appears first because the stack follows LIFO.</p></div><div class="button-group"><button id="popHistoryButton" class="button button-outline" type="button">Pop latest</button><button id="clearHistoryButton" class="button button-quiet" type="button">Clear history</button></div></div>
+          <div id="historyPeek" class="queue-peek"></div><div id="historyList" class="history-list"></div>
+        </section>
+
+        <section id="page-reports" class="page-section" hidden>
+          <div class="page-heading"><div><p class="eyebrow">PROPERTY SUMMARY</p><h1>Equipment report</h1><p>Inventory quantities and condition at a glance.</p></div><button id="printReportButton" class="button button-outline" type="button">Print report</button></div>
+          <div id="reportMetrics" class="report-grid"></div>
+          <div class="section-heading"><div><p class="eyebrow">FULL REGISTER</p><h2>Equipment records</h2></div></div><div id="reportTable" class="table-frame"></div>
+        </section>
+
+        <section id="page-dsa" class="page-section" hidden>
+          <div class="page-heading"><div><p class="eyebrow">PROJECT WALKTHROUGH</p><h1>DSA demonstration</h1><p>Core data structures and algorithms used in this system.</p></div></div>
+          <div class="concept-grid">
+            <article class="concept-card"><span class="concept-index">01 / DATA</span><h2>Array</h2><p>An Array stores the main collection of equipment records so they can be added, updated, deleted, searched, and displayed.</p><small>Operations · Add / Update / Delete / Display</small></article>
+            <article class="concept-card"><span class="concept-index">02 / DATA</span><h2>Stack</h2><p>The Stack stores activity history. It follows LIFO, so the latest activity is accessed first.</p><small>Operations · Push / Pop / Peek</small></article>
+            <article class="concept-card"><span class="concept-index">03 / DATA</span><h2>Queue</h2><p>The Queue stores maintenance requests. It follows FIFO, so requests are processed in arrival order.</p><small>Operations · Enqueue / Dequeue / Peek</small></article>
+            <article class="concept-card"><span class="concept-index">04 / DATA</span><h2>Binary Search Tree</h2><p>The BST organizes records by Equipment ID and demonstrates structured search and traversal.</p><small>Operations · Insert / Search / In-order traversal</small></article>
+          </div>
+          <div class="section-heading"><div><p class="eyebrow">LIVE TREE</p><h2>Equipment ID structure</h2></div></div>
+          <div class="bst-panel"><form id="bstSearchForm" class="bst-search"><label>Search Equipment ID<input id="bstSearchInput" placeholder="EQ001" required></label><button class="button button-primary" type="submit">Search BST &amp; Binary</button></form><p id="bstSearchResult" class="bst-result" aria-live="polite">Search the current tree by Equipment ID.</p><p id="binarySearchResult" class="bst-result" aria-live="polite">Binary Search runs on an ID-sorted copy of the equipment records.</p><div class="tree-diagram"><div class="tree-root-label">BST ROOT</div><div id="bstRoot" class="tree-root">Empty tree</div><p id="bstBranches" class="tree-branches"></p></div><p class="traversal-label">IN-ORDER TRAVERSAL</p><p id="bstTraversal" class="traversal-output">No equipment IDs</p></div>
+          <div class="section-heading"><div><p class="eyebrow">ALGORITHM NOTES</p><h2>What the code demonstrates</h2></div></div>
+          <div class="algorithm-list">
+            <article><h3>Linear Search</h3><p>Checks each equipment record sequentially and is used for general field searching.</p><code>O(n)</code></article>
+            <article><h3>Binary Search</h3><p>Searches for an Equipment ID after ordering a copy of the IDs; each step halves the search range.</p><code>O(log n)</code></article>
+            <article><h3>Bubble Sort</h3><p>Compares adjacent records and swaps out-of-order values to organize the equipment list.</p><code>O(n²)</code></article>
+            <article><h3>BST Search &amp; Traversal</h3><p>Follows tree branches to locate an ID. In-order traversal visits IDs in sorted order.</p><code>O(h)</code></article>
+          </div>
+          <div class="dsa-note"><strong>Presentation note</strong><p>Dashboard and report status totals represent units (the sum of Quantity). The BST, activity stack, and maintenance queue operate on equipment records, not individual units.</p></div>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <div id="userShell" class="user-shell" hidden>
+    <header class="user-topbar">
+      <a class="user-brand" href="#user-dashboard" data-user-page="home"><span class="brand-mark brand-mark-small" aria-hidden="true">SE</span><span><strong>Equipment Tracking System</strong><small>NORMAL USER</small></span></a>
+      <nav class="user-nav" aria-label="User navigation">
+        <button class="user-nav-item active" data-user-page="home">Home</button>
+        <button class="user-nav-item" data-user-page="available">Available Equipment</button>
+        <button class="user-nav-item" data-user-page="unavailable">Unavailable Equipment</button>
+        <button class="user-nav-item" data-user-page="profile">Profile</button>
+        <button id="userLogoutButton" class="button button-outline" type="button">Logout</button>
+      </nav>
+    </header>
+    <main class="user-content">
+      <section id="user-page-home" class="user-page">
+        <div class="user-welcome"><p class="eyebrow">EQUIPMENT CATALOG</p><h1>Welcome, <span id="userWelcomeName">there</span></h1><p>Browse school equipment and check its current availability.</p></div>
+        <div class="user-metrics"><article class="user-metric"><span>AVAILABLE EQUIPMENT</span><strong id="userAvailableCount">0</strong><small>units available to use</small></article><article class="user-metric"><span>UNAVAILABLE EQUIPMENT</span><strong id="userUnavailableCount">0</strong><small>units not currently available</small></article></div>
+        <div class="user-return-panel">
+          <div class="user-catalog-heading"><div><p class="eyebrow">BORROWED ITEMS</p><h2>My Borrowed Equipment</h2></div></div>
+          <div id="userBorrowedEquipment" class="user-return-list"></div>
+        </div>
+        <div class="user-return-panel">
+          <div class="user-catalog-heading"><div><p class="eyebrow">RETURN HISTORY</p><h2>My Return History</h2></div></div>
+          <div id="userReturnHistory" class="user-return-list"></div>
+        </div>
+        <div class="user-catalog-heading"><div><p class="eyebrow">CATALOG</p><h2>Browse equipment</h2></div><button class="text-button" data-user-page="available">See available items →</button></div>
+        <div id="userHomeEquipment" class="user-equipment-grid"></div>
+      </section>
+      <section id="user-page-available" class="user-page" hidden>
+        <div class="user-welcome"><p class="eyebrow">EQUIPMENT CATALOG</p><h1>Available equipment</h1><p>Items marked available and with quantity greater than zero.</p></div>
+        <div class="user-filterbar"><label class="user-search"><span class="sr-only">Search equipment by name or category</span><input id="userSearchInput" type="search" placeholder="Search equipment..."></label><div class="filter-segment" role="group" aria-label="Filter equipment"><button class="filter-button" data-user-filter="all">All</button><button class="filter-button active" data-user-filter="available">Available</button><button class="filter-button" data-user-filter="unavailable">Unavailable</button></div></div>
+        <div id="userEquipmentFeedback" class="user-feedback" aria-live="polite"></div><div id="userEquipmentGrid" class="user-equipment-grid"></div>
+      </section>
+      <section id="user-page-unavailable" class="user-page" hidden>
+        <div class="user-welcome"><p class="eyebrow">EQUIPMENT CATALOG</p><h1>Unavailable equipment</h1><p>Items not currently marked available or with no units in stock.</p></div>
+        <div class="user-filterbar"><label class="user-search"><span class="sr-only">Search equipment by name or category</span><input id="userUnavailableSearch" type="search" placeholder="Search equipment..."></label></div>
+        <div id="userUnavailableGrid" class="user-equipment-grid"></div>
+      </section>
+      <section id="user-page-profile" class="user-page" hidden>
+        <div class="user-welcome"><p class="eyebrow">ACCOUNT</p><h1>Your profile</h1><p>Personal information associated with this account.</p></div>
+        <div id="userProfile" class="profile-panel"></div>
+      </section>
+    </main>
+  </div>
+
+  <div id="modalBackdrop" class="modal-backdrop" hidden>
+    <section id="appModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle" aria-describedby="modalDescription">
+      <div class="modal-header"><div><p class="eyebrow" id="modalEyebrow">EQUIPMENT</p><h2 id="modalTitle">Equipment details</h2></div><button id="closeModalButton" class="icon-button" aria-label="Close dialog">×</button></div>
+      <div id="modalContent" class="modal-content"></div>
+      <div id="modalActions" class="modal-actions"></div>
+    </section>
+  </div>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+</body>
+</html>
